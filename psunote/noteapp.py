@@ -19,7 +19,10 @@ def index():
     notes = db.session.execute(
         db.select(models.Note).order_by(models.Note.title)
     ).scalars()
-    return flask.render_template("index.html", notes=notes)
+    return flask.render_template(
+        "index.html",
+        notes=notes,
+    )
 
 
 # Create note
@@ -51,20 +54,22 @@ def notes_create():
         db.session.commit()
         return flask.redirect(flask.url_for("index"))
 
-    return flask.render_template("notes-create.html", form=form)
+    return flask.render_template(
+        "notes-create.html",
+        form=form,
+    )
 
 
 # create tag
 @app.route("/tags/<tag_name>")
 def tags_view(tag_name):
     db = models.db
-    tag = (
-        db.session.execute(db.select(models.Tag).where(models.Tag.name == tag_name))
-        .scalars()
-        .first()
-    )
+    tag = db.session.execute(
+        db.select(models.Tag).where(models.Tag.name == tag_name)
+    ).scalar_one_or_none()
+
     notes = db.session.execute(
-        db.select(models.Note).where(models.Note.tags.any(id=tag.id))
+        db.select(models.Note).join(models.Note.tags).where(models.Tag.name == tag_name)
     ).scalars()
 
     return flask.render_template(
@@ -78,11 +83,11 @@ def tags_view(tag_name):
 @app.route("/notes/<int:note_id>/edit", methods=["GET", "POST"])
 def notes_edit(note_id):
     db = models.db
-    note = db.get_or_404(models.Note, note_id)
+    note = db.session.get(models.Note, note_id)
+
     form = forms.NoteForm(obj=note)
 
     if form.validate_on_submit():
-        # Update only the fields that are not empty
         if form.title.data:
             note.title = form.title.data
         if form.description.data:
@@ -91,7 +96,11 @@ def notes_edit(note_id):
         db.session.commit()
         return flask.redirect(flask.url_for("index"))
 
-    return flask.render_template("notes-edit.html", form=form, note=note)
+    return flask.render_template(
+        "notes-edit.html",
+        form=form,
+        note=note,
+    )
 
 
 # delete note
@@ -108,17 +117,32 @@ def notes_delete(note_id):
 @app.route("/tags/<tag_name>/edit", methods=["GET", "POST"])
 def tags_edit(tag_name):
     db = models.db
+
     tag = db.session.execute(
         db.select(models.Tag).where(models.Tag.name == tag_name)
     ).scalar_one_or_none()
 
+    if tag is None:
+        return flask.redirect(flask.url_for("tags_not_found"))
+
     form = forms.TagForm(obj=tag)
 
     if form.validate_on_submit():
-        if form.name.data and form.name.data != tag.name:
-            tag.name = form.name.data
+        new_name = form.name.data.strip()
+
+        if new_name == tag.name:
+            return flask.redirect(flask.url_for("tags_view", tag_name=new_name))
+
+        existing_tag = db.session.execute(
+            db.select(models.Tag).where(models.Tag.name == new_name)
+        ).scalar_one_or_none()
+
+        if existing_tag:
+            form.name.errors.append("A tag with this name already exists.")
+        else:
+            tag.name = new_name
             db.session.commit()
-            return flask.redirect(flask.url_for("tags_view", tag_name=tag.name))
+            return flask.redirect(flask.url_for("tags_view", tag_name=new_name))
 
     return flask.render_template("tags-edit.html", form=form, tag=tag)
 
