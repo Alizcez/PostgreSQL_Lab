@@ -45,7 +45,7 @@ BaseNoteForm = model_form(
 
 class NoteForm(FlaskForm):
     title = StringField("Title", validators=[DataRequired()])
-    description = TextAreaField("Description", validators=[DataRequired()])
+    description = TextAreaField("Description")
     tags = StringField("Tags")
 
 
